@@ -2,8 +2,10 @@
 # - UserTracer: the most recent WINDOW trajectory (all features) for each User
 # - QuestionTracer: all question ids ever encountered by each User
 # - LectureTarcer: timesteps of the last relevan lecture (same Part) for each User
-
-
+import numpy as np
+import pandas as pd
+import pickle
+import time
 
 class UserTracer(object):
 

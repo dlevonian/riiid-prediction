@@ -8,6 +8,11 @@
 # - Decoder Layer
 # - Encoder, Decoder Classes
 
+import tensorflow as tf
+from tensorflow.keras.layers import Embedding, Dense, Dropout, LayerNormalization
+from tensorflow.keras.losses import binary_crossentropy
+import tensorflow.keras.backend as K
+
 # ============== DATAFRAME
 N_Q = 13523
 REMOVE_LECTURES=True
@@ -31,8 +36,7 @@ DFF=D_MODEL
 DROPOUT=0.1
 
 
-
-def positional_encoding(seq_len=WINDOW, d_pos=D_POS, min_rate=1e-2):
+def positional_encoding(d_pos, seq_len=WINDOW, min_rate=1e-2):
     """return sin/cos position indicator  
        in contrast to AIAYN, the positional encoding is concatented, not added
        no need to use full D_MODEL, a separate smaller dimension is used (e.g. 16 or 32) 
@@ -261,26 +265,33 @@ class Decoder(tf.keras.layers.Layer):
 
 
 class Transformer(tf.keras.Model):
-    """Try symmetric Enc-Dec architecture
-    """
+
     def __init__(self, 
                  window, n_layers, d_model, n_heads, dff, dropout_rate,
                  n_questions, n_lagbins, n_histbins, po):
-
+        """     Intitialize the embedding layers, 
+                Intialize the Encoder, Decoder, final sigmoid output
+                
+                Provide for vacant_depth, part of d_model not used by question embedding
+                Vacant_depth used for concatenating the other variables.
+                E.g. vacant_depth = 7 to make room for:
+                -- lag,  embedding dims=4
+                -- repeat, qcp, y_roll,  each with dims=1        
+        """
         super().__init__()
-
         self.window = window
         self.d_model  = d_model
         self.po = po
 
-        self.emb = Embedding(n_questions+1,   d_model-23, mask_zero=True)  
+        self.vacant_depth = 7
 
+        self.emb = Embedding(n_questions+1, self.d_model-self.vacant_depth, mask_zero=True)  
         self.emb_lag = Embedding(n_lagbins+1, 4)
-        self.pos_scaffold = Embedding(2, 16)   # >>>> a temporary solution
 
-        self.encoder = Encoder(window, n_layers, d_model, n_heads, dff, dropout_rate)
-        self.decoder = Decoder(window, n_layers, d_model, n_heads, dff, dropout_rate)
-
+        self.encoder = Encoder(window, n_layers, d_model, n_heads, dff, dropout_rate,
+                               n_questions, n_lagbins, n_histbins, po)
+        self.decoder = Decoder(window, n_layers, d_model, n_heads, dff, dropout_rate,
+                               n_questions, n_lagbins, n_histbins, po)
         self.final_sigmoid = Dense(1, activation='sigmoid')
 
         
@@ -288,25 +299,21 @@ class Transformer(tf.keras.Model):
 
         batch = tf.cast(batch, tf.float32)
         
+        # MAKE SURE FEATURE 0 DOES NOT HAVE ZEROS EXCEPT FOR PADDING:
         mask = decoder_mask(batch[:,:,0])  
-
-        # ['question_id', 'lag', 'tsl', 'repeat', 'qcp', 'y_roll', 'y_true']
-        
-        scaff = self.pos_scaffold(batch[:,:, self.po.y_roll])  # batch, seq, 16
-        pos = scaff-scaff+positional_encoding()
 
         question_id = batch[:,:, self.po.question_id]
         question_id = self.emb(question_id)  
-        # question_id = question_id + pos
+        
+        pos = positional_encoding(d_pos=self.d_model-self.vacant_depth)
+        question_id = question_id + pos
 
-        lag = batch[:,:, self.po.lag]   # embedded lag bins
+        lag = batch[:,:, self.po.lag]   
         lag = self.emb_lag(lag) 
 
-        # tsl = batch[:,:, self.po.tsl]   # embedded lag bins
-        # tsl = self.emb_tsl(tsl) 
-
+        # repeat, qcp, y_roll -- scalars
         repeat = batch[:,:, self.po.repeat]
-        repeat = tf.expand_dims(repeat, axis=2)
+        repeat = tf.expand_dims(repeat, axis=2) # (batch_size, seq_len, 1)
 
         qcp = batch[:,:, self.po.qcp]
         qcp = tf.expand_dims(qcp, axis=2)   # (batch_size, seq_len, 1)
@@ -315,18 +322,17 @@ class Transformer(tf.keras.Model):
         y_roll = tf.expand_dims(y_roll, axis=2)   # (batch_size, seq_len, 1)
         
         # Concatenate (NB not add) all inputs:
-        # - positional encoding
-        # - embedded question id
-        # - repeat question indicator
+        # - embedded question id + positional encoding
         # - embedded lag
+        # - repeat: repeat question indicator
         # - qcp: question correctness percentage
         # - y_roll: previous timestep ground truth 
-        x = tf.concat([pos, question_id, repeat, lag, qcp, y_roll], axis=2)
+
+        x = tf.concat([question_id, lag, repeat, qcp, y_roll], axis=2)
 
         enc_output = self.encoder(x, mask, training)  # (batch_size, inp_seq_len, d_model)
-        
         dec_output = self.decoder(x, enc_output, mask, training) # (batch_size, tar_seq_len, d_model)
-        
         output = self.final_sigmoid(dec_output)
 
         return   tf.squeeze(output)  # (batch_size, tar_seq_len)
+
