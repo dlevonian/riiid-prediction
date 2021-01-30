@@ -37,7 +37,7 @@ Transformer architecture is following the original architecture per [Attention I
 
 
 ## Model research
-There are many possible model architectures beyond transformers, such as RNNs (and more generally, broad space state models), stacked architectures, etc.
+There are many possible model architectures beyond transformers, such as LSTMs, stacked architectures, state space models (widely used for knowledge tracing in the past), etc. But even within transformers, there are many high-level design choices we have to make which strongly affect the model performance on Riiid data set. 
 
 The focus of model research was therefore not on hyperparameter tuning within a narrow family but a broader exploration of possible structures.
 
@@ -46,11 +46,11 @@ Some of modifications tested:
 - stacked model (Transformer + LightGBM)
 - incremental retraining 
 - split the users into light and heavy, train separately
-- concatenate, not add, the questions embedding with the rest of the inputs - **Otpimal!**
+- concatenate, not add, the model depth components (questions embedding, the rest of the inputs) - **Otpimal**
 
 Feature engineering experiments:
-- add question's overall correctness across users - **Adds value!**
-- add a repeat question indicator - **Adds value!**
+- add question's overall correctness across users - **Adds value**
+- add a repeat question indicator - **Adds value**
 - add time_since_lecture for the relevant TOEIC parts
 - add user's correctness ratio for the relevant TOEIC part
 - add a 'stability' measure, how methodical the user is in going through the sections
