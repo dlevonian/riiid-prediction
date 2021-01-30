@@ -25,8 +25,8 @@ From the Kaggle description:
 The approach was adapted from a research papers by the company, for example [Riiid SAINT+](https://arxiv.org/abs/2010.12042), Shin et al., 2020
 Key considerations:
 - answer correctness is a function of both 
-  - the student features, e.g. his/her past history, and 
-  - the question features, e.g. a measure of how hard the question generally is, which TOEIC part it belongs to, etc.
+  - user's learning trajectory (non-Markovian, needs to incroporate long-term dependencies)
+  - question features, e.g. a measure of how hard the question generally is, which TOEIC part it belongs to, etc.
 - we need to keep track of each individual students' learning trajectory
 - cross-validate to mimic a consecutive time period. i.e. a mix of old users and new users
 
